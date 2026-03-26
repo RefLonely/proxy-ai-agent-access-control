@@ -1,0 +1,13 @@
+# 核心依赖
+networkx>=2.8
+numpy>=1.21
+scipy>=1.10
+dataclasses-json>=0.5
+
+# 可选: 用于句子嵌入 (幻觉抑制)
+sentence-transformers>=2.2
+torch>=1.12
+
+# 开发测试
+pytest>=7.0
+pytest-cov>=3.0
