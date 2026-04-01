@@ -118,10 +118,12 @@
 proxy-ai-agent-access-control/
 ├── README.md                     # 项目说明文档
 ├── docs/                         # 详细文档
+│   ├── 接口数据格式规范.md        # 接口数据格式规范
 │   ├── problem.md                # 问题描述
 │   ├── solution.md               # 解决方案设计
 │   └── evaluation.md             # 评估结果
 ├── src/                          # 核心源代码
+│   ├── access_controller.py      # 访问控制引擎
 │   ├── trust/                    # 信任边界动态维护模块 (DBG)
 │   ├── alignment/                # 幻觉抑制与安全对齐模块 (PSSC)
 │   ├── security_audit/           # 安全审计与监控模块
@@ -132,14 +134,23 @@ proxy-ai-agent-access-control/
 │   │   ├── global_situation.py   # 全局安全态势感知
 │   │   ├── emergency_response.py # 自动应急响应
 │   │   └── incident_tracing.py   # 安全事件溯源
+│   ├── communication/            # 通信管理模块
 │   ├── models/                   # 数据模型定义
 │   └── utils/                    # 工具函数
 ├── examples/                     # 使用示例
 │   ├── power_system_demo.py      # 电网卫士平台电力系统演示 ✅ 已实现
 │   ├── dynamic_trust_example.py  # 动态信任边界维护示例
 │   ├── hallucination_suppression_example.py  # 幻觉抑制示例
-│   └── security_audit_example.py # 安全审计与监控示例
+│   ├── security_audit_example.py # 安全审计与监控示例
+│   └── test_enhanced_features.py # 增强功能测试
 ├── tests/                        # 单元测试
+│   ├── test_evaluation.py        # 基础功能测试
+│   ├── test_security_audit.py    # 安全审计模块测试
+│   ├── test_security_audit_fixed.py  # 安全审计模块固定测试
+│   ├── test_simple.py            # 简单测试
+│   ├── test_trust.py             # 信任管理测试
+│   ├── test_trust_fix.py         # 信任管理修复测试
+│   └── test_trust_fix2.py        # 信任管理修复测试2
 └── requirements.txt              # 依赖清单
 ```
 
