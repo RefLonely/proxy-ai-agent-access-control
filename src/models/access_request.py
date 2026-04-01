@@ -20,11 +20,13 @@ class AccessAction(Enum):
 
 
 class DecisionOutcome(Enum):
-    """访问决策结果"""
-    ALLOW = "allow"
-    DENY = "deny"
-    CHALLENGE = "challenge"  # 需要二次验证
-    DEFER = "defer"  # 延迟决策
+    """访问决策结果 - 电网五级响应机制"""
+    ALLOW = "allow"         # 允许 - 低风险，直接通过
+    CHALLENGE = "challenge" # 挑战 - 中风险，需要二次验证
+    LIMIT = "limit"         # 限制 - 中高风险，允许访问但限制权限并记录审计
+    DENY = "deny"           # 拒绝 - 高风险，拒绝本次访问
+    ISOLATE = "isolate"     # 隔离 - 极高风险，拒绝访问并隔离请求源节点
+    DEFER = "defer"         # 延迟 - 保留兼容旧接口
 
 
 @dataclass

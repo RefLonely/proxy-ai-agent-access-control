@@ -8,6 +8,11 @@ dataclasses-json>=0.5
 sentence-transformers>=2.2
 torch>=1.12
 
+# 安全审计与监控
+psutil>=5.9
+python-dotenv>=1.0
+prometheus-client>=0.16
+
 # 开发测试
 pytest>=7.0
 pytest-cov>=3.0

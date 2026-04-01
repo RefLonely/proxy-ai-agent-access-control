@@ -122,7 +122,7 @@ class AgenticAccessController:
         
         alignment_score = validation.alignment_score
         
-        # 检测到幻觉
+        # 检测到幻觉或高风险
         if validation.recommendation == DecisionOutcome.DENY:
             self.detected_hallucinations += 1
             self.denied_requests += 1
@@ -149,6 +149,41 @@ class AgenticAccessController:
                 alignment_score=alignment_score
             )
             self.audit_manager.log_access_decision(decision)
+            return decision
+        
+        # 低对齐，限制访问
+        if validation.recommendation == DecisionOutcome.LIMIT:
+            self.challenged_requests += 1  # 限制计入待审核
+            decision = AccessDecision(
+                request=request,
+                outcome=DecisionOutcome.LIMIT,
+                confidence=alignment_score,
+                reason=f"Low alignment: {validation.reason}, allow with restricted permissions",
+                trust_score=trust_score,
+                alignment_score=alignment_score
+            )
+            self.audit_manager.log_access_decision(decision)
+            return decision
+        
+        # 无匹配，隔离请求源
+        if validation.recommendation == DecisionOutcome.ISOLATE:
+            self.denied_requests += 1
+            decision = AccessDecision(
+                request=request,
+                outcome=DecisionOutcome.ISOLATE,
+                confidence=alignment_score,
+                reason=f"Security violation: {validation.reason}, isolate source agent",
+                trust_score=trust_score,
+                alignment_score=alignment_score
+            )
+            self.audit_manager.log_access_decision(decision)
+            # 隔离处理：立即降低所有指向该源的信任评分
+            # 注意：需要确保trust_manager.dbg.contract_boundary方法存在
+            try:
+                if hasattr(self.trust_manager, 'dbg') and hasattr(self.trust_manager.dbg, 'contract_boundary'):
+                    self.trust_manager.dbg.contract_boundary(request.requester_id, decay_factor=0.5)
+            except Exception as e:
+                logger.error(f"Failed to isolate agent {request.requester_id}: {e}")
             return decision
         
         # 信任和对齐都通过

@@ -69,26 +69,51 @@ class AuditManager:
             "include_alignment_details": True,
             "include_metadata": False
         }
+        # 敏感字段列表 - 这些字段会被脱敏
+        self.sensitive_fields = {
+            'token', 'secret', 'password', 'key', 'api_key', 'credential', 
+            'auth', 'private', 'signature', 'cookie'
+        }
+    
+    def _desensitize(self, metadata: Dict) -> Dict:
+        """对metadata中的敏感字段进行脱敏，符合等保要求"""
+        if not metadata:
+            return {}
+        
+        result = {}
+        for key, value in metadata.items():
+            if any(s in key.lower() for s in self.sensitive_fields):
+                # 敏感字段替换为***
+                result[key] = '***'
+            elif isinstance(value, dict):
+                result[key] = self._desensitize(value)
+            else:
+                result[key] = value
+        return result
     
     def log_access_request(self, request: AccessRequest) -> AuditEvent:
-        """记录访问请求"""
+        """记录访问请求 - 自动脱敏敏感字段"""
         event = AuditEvent(
             event_type=AuditEventType.ACCESS_REQUEST,
             source_agent_id=request.requester_id,
             target_agent_id=request.target_id,
             request_id=request.request_id,
-            metadata=request.context
+            metadata=self._desensitize(request.context)
         )
         self.audit_events.append(event)
         return event
     
     def log_access_decision(self, decision: AccessDecision) -> AuditEvent:
-        """记录访问决策"""
+        """记录访问决策 - 自动脱敏敏感字段"""
         event_type = AuditEventType.ACCESS_ALLOWED
         if decision.outcome == DecisionOutcome.DENY:
             event_type = AuditEventType.ACCESS_DENIED
         elif decision.outcome == DecisionOutcome.CHALLENGE:
             event_type = AuditEventType.ACCESS_CHALLENGED
+        elif decision.outcome == DecisionOutcome.LIMIT:
+            event_type = AuditEventType.ACCESS_CHALLENGED
+        elif decision.outcome == DecisionOutcome.ISOLATE:
+            event_type = AuditEventType.ACCESS_DENIED
         
         event = AuditEvent(
             event_type=event_type,
@@ -99,7 +124,7 @@ class AuditManager:
             trust_score=decision.trust_score,
             alignment_score=decision.alignment_score,
             reason=decision.reason,
-            metadata=decision.request.context
+            metadata=self._desensitize(decision.request.context)
         )
         self.audit_events.append(event)
         return event
