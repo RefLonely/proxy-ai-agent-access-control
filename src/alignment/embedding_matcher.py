@@ -1,6 +1,29 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 import numpy as np
 import re
+
+# 电网专业术语同义词词典 - 用于增强电网场景匹配
+POWER_GRID_TERM_SYNONYMS: Dict[str, List[str]] = {
+    "台区": ["district", "distribution area", "transformer area", "配网台区", "供电台区"],
+    "配电网": ["distribution network", "distributed grid", "配网"],
+    "光伏": ["photovoltaic", "pv", "太阳能发电", "光伏电站"],
+    "储能": ["energy storage", "battery storage", "储能系统"],
+    "虚拟电厂": ["vpp", "virtual power plant"],
+    "SCADA": ["supervisory control and data acquisition", "监控和数据采集", "调度自动化"],
+    "断路器": ["breaker", "circuit breaker", "开关"],
+    "发电机": ["generator", "genset", "发电机组"],
+    "变压器": ["transformer", "变电器"],
+    "母线": ["bus", "busbar"],
+    "馈线": ["feeder"],
+    "继电保护": ["relay protection", "protection relay"],
+    "调度": ["dispatch", "dispatching", "调派"],
+    "发电计划": ["generation schedule", "power plan", "dispatch plan"],
+    "并网": ["grid connection", "connect to grid"],
+    "离网": ["off grid", "disconnect from grid"],
+    "分布式新能源": ["distributed renewable energy", "distributed generation"],
+    "需求响应": ["demand response", "dr"],
+    "负荷": ["load", "电力负荷"],
+}
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -13,11 +36,15 @@ from ..models.security_schema import SecuritySchema, SchemaMatchResult
 
 
 class EmbeddingMatcher:
-    """嵌入匹配器 - 用于安全基模的嵌入空间对比"""
+    """嵌入匹配器 - 用于安全基模的嵌入空间对比
+    电网场景优化：添加电网专业术语同义词扩展，提高匹配准确率
+    """
     
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", enable_power_grid_optimization: bool = True):
         self.model = None
         self.model_name = model_name
+        self.enable_power_grid_optimization = enable_power_grid_optimization
+        self.term_synonyms = POWER_GRID_TERM_SYNONYMS
         if SENTENCE_TRANSFORMER_AVAILABLE:
             try:
                 self.model = SentenceTransformer(model_name)
@@ -25,12 +52,27 @@ class EmbeddingMatcher:
                 print(f"Warning: Could not load sentence transformer: {e}")
                 self.model = None
     
+    def _expand_power_grid_terms(self, text: str) -> str:
+        """扩展电网专业术语，添加同义词，提高匹配准确率"""
+        if not self.enable_power_grid_optimization:
+            return text
+        
+        expanded = text
+        for term, synonyms in self.term_synonyms.items():
+            if term in expanded or any(s in expanded for s in synonyms):
+                # 如果已有术语，添加所有同义词进去，丰富 embedding
+                expanded = expanded + " " + " ".join(synonyms)
+        
+        return expanded
+    
     def embed_text(self, text: str) -> Optional[List[float]]:
-        """计算文本嵌入"""
+        """计算文本嵌入 - 电网优化：扩展专业术语"""
         if self.model is None:
             return None
         
-        embedding = self.model.encode(text)
+        # 电网场景优化：扩展专业术语
+        expanded_text = self._expand_power_grid_terms(text)
+        embedding = self.model.encode(expanded_text)
         return embedding.tolist()
     
     def cosine_similarity(self, a: List[float], b: List[float]) -> float:

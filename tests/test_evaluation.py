@@ -94,15 +94,47 @@ def evaluate_hallucination_detection():
     controller = AgenticAccessController(local_agent)
     controller.load_default_industrial_schemas()
     
-    # 添加测试代理
+    # 添加测试代理 - 需要添加所有代理，这样信任评估才能找到它们
     local_plc = Agent(agent_id="plc_1", domain="智能配电系统", agent_type="device")
     scada_local = Agent(agent_id="scada_local", domain="电力监控系统", agent_type="control")
     external = Agent(agent_id="external", domain="外部", agent_type="analytics")
     robot_local = Agent(agent_id="robot_controller", domain="智能配电系统", agent_type="control")
+    robot_arm = Agent(agent_id="robot_arm", domain="智能配电系统", agent_type="device")
     
+    # 都要添加到信任管理器
+    controller.add_remote_agent(local_plc, 0.9)
     controller.add_remote_agent(scada_local, 0.8)
     controller.add_remote_agent(external, 0.4)
     controller.add_remote_agent(robot_local, 0.9)
+    controller.add_remote_agent(robot_arm, 0.9)
+    
+    # 为测试请求建立初始信任关系 
+    # evaluate_access_trust 评估的是 requester 对 target 的信任
+    
+    # SCADA 读取 PLC - SCADA 对 PLC 应该有信任
+    controller.trust_manager.dbg.add_trust_edge(
+        source_id="scada_local",
+        target_id="plc_1",
+        trust_score=0.8
+    )
+    # 外部写入 PLC - 外部对 PLC 信任低
+    controller.trust_manager.dbg.add_trust_edge(
+        source_id="external",
+        target_id="plc_1",
+        trust_score=0.4
+    )
+    # robot_controller 控制 robot_arm - 机器人控制器对机械臂有信任
+    controller.trust_manager.dbg.add_trust_edge(
+        source_id="robot_controller",
+        target_id="robot_arm",
+        trust_score=0.85
+    )
+    # scada_local 控制 robot_arm - 跨域，信任低
+    controller.trust_manager.dbg.add_trust_edge(
+        source_id="scada_local",
+        target_id="robot_arm",
+        trust_score=0.4
+    )
     
     # 测试用例集合
     test_cases = [
@@ -147,14 +179,56 @@ def evaluate_hallucination_detection():
     
     start_time = time.time()
     for tc in test_cases:
+        # 设置context来帮助条件匹配
+        # 根据代理所属域设置domain
+        if tc['request'].requester_id == 'plc_1':
+            tc['request'].context['domain'] = '智能配电系统'
+        elif tc['request'].requester_id == 'scada_local':
+            tc['request'].context['domain'] = '电力监控系统'
+        elif tc['request'].requester_id == 'robot_controller':
+            tc['request'].context['domain'] = '智能配电系统'
+        else:
+            tc['request'].context['domain'] = 'external'
+        
+        # 设置trust分数
+        if tc['request'].requester_id in ['scada_local', 'robot_controller', 'plc_1']:
+            tc['request'].context['trust'] = 0.8
+        else:
+            tc['request'].context['trust'] = 0.4
+        
+        # 先做信任评估调试
+        trust_score, trust_ok = controller.trust_manager.evaluate_access_trust(
+            tc['request'].requester_id, tc['request'].target_id
+        )
+        # 实际评估
         decision = controller.evaluate_access(
             tc['request'], 
             tc['decision'],
             tc['description']
         )
+        # 只有当最终推荐是DENY或ISOLATE时才算作检测到幻觉
+        # CHALLENGE/LIMIT只是需要进一步验证，不算作幻觉检测
         detected_hallucination = (
-            decision.outcome != tc['decision'] and decision.outcome == DecisionOutcome.DENY
+            decision.outcome in [DecisionOutcome.DENY, DecisionOutcome.ISOLATE] and 
+            tc['decision'] == DecisionOutcome.ALLOW
         )
+        
+        # 获取验证结果用于调试
+        validation = controller.alignment_validator.validate_llm_decision(
+            tc['request'], 
+            tc['decision'],
+            tc['description']
+        )
+        
+        # 调试输出
+        print(f"\n测试用例: {tc['description']}")
+        print(f"  信任分数: {trust_score:.3f}, 信任通过: {trust_ok}")
+        print(f"  预期幻觉: {tc['is_hallucination']}, 检测到: {detected_hallucination}")
+        print(f"  推荐决策: {decision.outcome}, LLM决策: {tc['decision']}")
+        print(f"  对齐分数: {validation.alignment_score:.3f}, 最佳匹配: {validation.best_match_schema.name if validation.best_match_schema else 'None'}")
+        if validation.best_match_schema:
+            print(f"  schema决策: {'ALLOW' if validation.best_match_schema.allow else 'DENY'}, schema允许={validation.best_match_schema.allow}")
+        print(f"  对齐阈值: {controller.alignment_validator.min_alignment_threshold}")
         
         if detected_hallucination and tc['is_hallucination']:
             true_positive += 1

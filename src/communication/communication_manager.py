@@ -3,10 +3,12 @@
 处理代理间的安全通信和协作机制
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import uuid
 from enum import Enum
+import hashlib
+import hmac
 
 from ..models.agent import Agent, AgentState, CommunicationRecord, CommunicationType
 
@@ -34,7 +36,9 @@ class CommunicationChannel:
 
 
 class CommunicationManager:
-    """代理通信管理类"""
+    """代理通信管理类
+    安全增强：添加签名验证，防止信任更新消息伪造
+    """
     
     def __init__(self):
         # 通信通道映射
@@ -43,6 +47,41 @@ class CommunicationManager:
         self.communication_records: List[CommunicationRecord] = []
         # 通信状态监控
         self.communication_status: Dict[str, Dict[str, str]] = {}
+        # 代理密钥 - 每个代理有自己的密钥用于签名
+        self.agent_keys: Dict[str, bytes] = {}
+        # 信任传播消息需要签名验证
+        self.require_signature_for_trust_propagation = True
+    
+    def generate_agent_key(self, agent_id: str) -> bytes:
+        """为代理生成签名密钥 - 生产环境应该用安全随机数生成"""
+        import os
+        key = os.urandom(32)  # 256-bit key for HMAC-SHA256
+        self.agent_keys[agent_id] = key
+        return key
+    
+    def get_agent_key(self, agent_id: str) -> Optional[bytes]:
+        """获取代理密钥"""
+        return self.agent_keys.get(agent_id)
+    
+    def sign_message(self, sender_agent_id: str, message: str) -> Tuple[str, bool]:
+        """对消息进行签名"""
+        key = self.get_agent_key(sender_agent_id)
+        if not key:
+            # 如果没有密钥，生成一个
+            key = self.generate_agent_key(sender_agent_id)
+        
+        signature = hmac.new(key, message.encode(), hashlib.sha256).hexdigest()
+        return signature, True
+    
+    def verify_signature(self, sender_agent_id: str, message: str, signature: str) -> bool:
+        """验证消息签名 - 防止伪造信任更新"""
+        key = self.get_agent_key(sender_agent_id)
+        if not key:
+            # 如果没有密钥，无法验证，拒绝信任更新
+            return False
+        
+        expected = hmac.new(key, message.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature)
     
     def create_channel(self, source_agent_id: str, target_agent_id: str, protocol: CommunicationProtocol = CommunicationProtocol.HTTP) -> CommunicationChannel:
         """创建通信通道"""
